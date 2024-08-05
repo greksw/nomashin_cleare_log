@@ -1,0 +1,47 @@
+# Указываем начальный и конечный IP адреса диапазона
+$startIP = 20
+$endIP = 250
+
+# Перебираем каждый IP адрес в диапазоне
+for ($i = $startIP; $i -le $endIP; $i++) {
+    # Формируем IP адрес
+    $ipAddress = "192.168.2.$i"
+    
+    # Проверяем доступность компьютера по указанному IP адресу
+    if (Test-Connection -ComputerName $ipAddress -Count 1 -Quiet) {
+        # Определяем архитектуру системы и путь к nxserver.exe на удаленном компьютере
+        $nxServerPath = Invoke-Command -ComputerName $ipAddress -ScriptBlock {
+            $arch = (Get-WmiObject Win32_Processor).AddressWidth
+            if ($arch -eq 32) {
+                return "C:\Program Files (x86)\NoMachine\bin\nxserver.exe"
+            } else {
+                return "C:\Program Files\NoMachine\bin\nxserver.exe"
+            }
+        }
+
+        # Останавливаем службу NoMachine
+        Write-Host "Остановка службы на компьютере $ipAddress"
+        Invoke-Command -ComputerName $ipAddress -ScriptBlock {
+            Stop-Service -Name "nomachine" -Force -ErrorAction SilentlyContinue
+        }
+
+        # Удаляем логи на удаленном компьютере
+        Write-Host "Удаление логов на компьютере $ipAddress"
+        Invoke-Command -ComputerName $ipAddress -ScriptBlock {
+            $remotePath = "C:\ProgramData\NoMachine\var\log\node\*"
+            Remove-Item -Path $remotePath -Recurse -Force
+        }
+
+        # Пауза в 1 минуту
+        Start-Sleep -Seconds 60
+
+        # Запускаем службу NoMachine
+        Write-Host "Запуск службы на компьютере $ipAddress"
+        Invoke-Command -ComputerName $ipAddress -ScriptBlock {
+            Start-Service -Name "nomachine" -ErrorAction SilentlyContinue
+        }
+    } else {
+        # Если компьютер недоступен, выводим сообщение об этом
+        Write-Host "Компьютер $ipAddress недоступен"
+    }
+}
